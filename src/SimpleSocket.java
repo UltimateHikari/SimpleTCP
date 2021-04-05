@@ -1,110 +1,138 @@
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.nio.channels.DatagramChannel;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 
-enum Status{
-	QUEUED,
-	SENT;
-}
-
-class SimplePacket{
-	private DatagramPacket packet;
-	private Status status;
-	public SimplePacket(DatagramPacket packet_) {
-		status = Status.QUEUED;
-		packet = packet_;
-	}
-	public Status getStatus() {
-		return status;
-	}
-	public void markSent() {
-		status = Status.SENT;
-	}
-	public DatagramPacket getPacket() {
-		return packet;
-	}
-}
-
-/*
- * datagram structure:
- * ..
- * ACK byte -> ACK bit + 7 ACK bits
- * SEQ byte -> SEQ bit + 7 SEQ bits
- * ..
- * data
- * ..
- * (SEQ bit because of one-sided server nature)
- */
-
 public class SimpleSocket {
-	private static final byte IS_TO_IGNORE = (byte) 0x80;
-	private static final byte BUFFER_SIZE = (byte)128;
+	class Resender extends TimerTask{
+		@Override
+		public void run() {
+			synchronized(lock) {
+				isTimerSet = false;
+				if(getShifted(base) != end) {
+					try {
+						socket.send(sending[base]);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					isTimerSet = true;
+					timer.schedule(resender, timeout);
+				}
+			}
+		}
+	}
+	
+	private static final int BUFFER_SIZE = 256;
 	private int base = 0;
 	private int end = 0;
 	private int currentACK = 0;
-	//TODO rewrite to ArrayList and syncronizing
-	private SimplePacket[] sending = new SimplePacket[BUFFER_SIZE];
-	private SimplePacket[] recieving = new SimplePacket[BUFFER_SIZE];
+	private final Object lock = new Object();
+	private DatagramPacket[] sending = new DatagramPacket[BUFFER_SIZE];
+	private DatagramPacket[] recieving = new DatagramPacket[BUFFER_SIZE];
 	private BlockingQueue<byte[]> recieved;
+	
 	private Thread rThread;
 	private DatagramSocket socket;
 	private int destPort;
 	private InetAddress address = null;
 	
+	private Timer timer = new Timer();
+	private boolean isTimerSet = false;
+	private Resender resender = new Resender();
+	private int timeout = 500;
+	
 	class ReadLoop implements Runnable{
 		private DatagramPacket packet;
+		private int ackindex;
+		private int index;
 		@Override
 		public void run() {
 			while(true) {
 				try {
 					socket.receive(packet);
-					//TODO get number and put into recieving
-					//and then send ACK;
+					ackindex = packet.getData()[0];
+					index = packet.getData()[1];
+					if(packet.getData().length > 3) {
+						synchronized(lock) {
+							if(recieving[index] == null) {
+								recieving[index] = packet;
+							}
+						}
+						pushRecieved();
+					}else {
+						//well its clearly ack
+					}
+					sendACK();
+					handleACK();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
 		}
+		private void sendACK() {
+			send(new byte[1]);
+			//if we had sth to send with we would
+		}
+		
+		private void handleACK() {
+			//if we have something to resend
+//			if(base != end) {
+				//but nah
+//			}
+			synchronized(lock) {
+				for(int i = base; i <= ackindex; i++) {
+					sending[i] = null;
+				}
+			}
+			base = ackindex;
+		}
 	}
 	
 	public SimpleSocket(int port) throws IOException {
 		socket = new DatagramSocket(port);
 		rThread = new Thread(new ReadLoop());
-		//sThread = new Thread(new SendLoop());
 		rThread.start();
-		//sThread.start();
 	}
 	
-	private DatagramPacket wrapData(byte[] data) throws InstantiationException {
+	private DatagramPacket wrapData(byte[] data, int packetNum) throws InstantiationException {
 		if(address == null) {
 			throw new InstantiationException("not connected");
 		}
-		//TODO add packet number here
-		return new DatagramPacket(data, data.length, address, destPort);
+		ByteArrayOutputStream bs = new ByteArrayOutputStream();
+		bs.write(currentACK);
+		bs.write(packetNum);
+		bs.writeBytes(data);
+		byte [] wrapped = bs.toByteArray();
+		return new DatagramPacket(wrapped, wrapped.length, address, destPort);
 	}
 	
 	public byte[] recieve() throws InterruptedException {
-		return recieved.take();
+		byte[] res;
+		synchronized(lock) {
+			res = recieved.take();
+		}
+		return res;
 	}
 	
 	public void send(byte[] data) {
 		DatagramPacket packet;
 		try {
-			packet = wrapData(data);
+			packet = wrapData(data, end);
 			socket.send(packet);
-			sending[end] = new SimplePacket(packet);
-			shift(end);
+			synchronized(lock) {
+				sending[end] = /*new SimplePacket(*/packet;
+				shift(end);
+				if(!isTimerSet) {
+					timer.schedule(resender, timeout);
+				}
+			}
+			
 		} catch (InstantiationException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -112,14 +140,20 @@ public class SimpleSocket {
 	}
 	
 	private void shift(int a) {
-		a = (a + 1) % BUFFER_SIZE;
+		a = getShifted(a);
+	}
+	
+	private int getShifted(int a) {
+		return (a + 1) % BUFFER_SIZE;
 	}
 	
 	private void pushRecieved() {
-		while(recieving[base] != null) {
-			recieved.add(recieving[base].getPacket().getData());
-			recieving[base] = null;
-			shift(base);
+		synchronized(lock) {
+			while(recieving[currentACK] != null) {
+				recieved.add(recieving[currentACK].getData());
+				recieving[currentACK] = null;
+				shift(currentACK);
+			}
 		}
 	}
 	

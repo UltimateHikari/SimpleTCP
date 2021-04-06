@@ -38,7 +38,7 @@ public class SimpleSocket {
 	
 	private Thread rThread;
 	private DatagramSocket socket;
-	private int destPort;
+	private int destPort = 3000; //placeholder, need to connect anyway
 	private InetAddress address = null;
 	
 	private Timer timer = new Timer();
@@ -47,7 +47,7 @@ public class SimpleSocket {
 	private int timeout = 500;
 	
 	class ReadLoop implements Runnable{
-		private DatagramPacket packet;
+		private DatagramPacket packet = new DatagramPacket(new byte[ 1024 ], 1024);
 		private int ackindex;
 		private int index;
 		@Override
@@ -96,8 +96,6 @@ public class SimpleSocket {
 	
 	public SimpleSocket(int port) throws IOException {
 		socket = new DatagramSocket(port);
-		rThread = new Thread(new ReadLoop());
-		rThread.start();
 	}
 	
 	private DatagramPacket wrapData(byte[] data, int packetNum) throws InstantiationException {
@@ -160,6 +158,8 @@ public class SimpleSocket {
 	public void connect(InetAddress address_, int port) throws IOException {
 		address = address_;
 		destPort = port;
+		rThread = new Thread(new ReadLoop());
+		rThread.start();
 	}
 	
 	public void close() throws InterruptedException, IOException {

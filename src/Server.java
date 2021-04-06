@@ -6,9 +6,14 @@ public class Server implements Runnable{
 	public void run() {
 		SimpleServerSocket ssocket = new SimpleServerSocket(6000);
 		SimpleSocket socket = ssocket.accept();
-		String s;
+		String s = null;
 		for(int i = 0; i < 10; i++) {
-			s = new String(socket.recieve());
+			try {
+				s = new String(socket.recieve());
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 			System.out.println(s);
 		}
 		try {

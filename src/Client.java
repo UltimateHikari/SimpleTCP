@@ -8,9 +8,10 @@ public class Client implements Runnable {
 		try {
 			SimpleSocket socket = new SimpleSocket(5000);
 			socket.connect(InetAddress.getByName("localhost"), 6000);
-//			for(int i = 0; i < 10; i++) {
-//				socket.send(("Sample packet number " + i).getBytes());
-//			}
+			for(int i = 0; i < 1; i++) {
+				byte [] data = ("Sample packet number " + i).getBytes();
+				socket.send(data);
+			}
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

@@ -3,8 +3,10 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
 public class SimpleSocket {
@@ -34,7 +36,7 @@ public class SimpleSocket {
 	private final Object lock = new Object();
 	private DatagramPacket[] sending = new DatagramPacket[BUFFER_SIZE];
 	private DatagramPacket[] recieving = new DatagramPacket[BUFFER_SIZE];
-	private BlockingQueue<byte[]> recieved;
+	private ArrayBlockingQueue<byte[]> recieved = new ArrayBlockingQueue<byte[]>(BUFFER_SIZE);
 	
 	private Thread rThread;
 	private DatagramSocket socket;
@@ -57,17 +59,17 @@ public class SimpleSocket {
 					socket.receive(packet);
 					ackindex = packet.getData()[0];
 					index = packet.getData()[1];
-					if(packet.getData().length > 3) {
+					if(packet.getLength() > 3) {
 						synchronized(lock) {
 							if(recieving[index] == null) {
 								recieving[index] = packet;
 							}
 						}
 						pushRecieved();
+						sendACK();
 					}else {
 						//well its clearly ack
 					}
-					sendACK();
 					handleACK();
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
@@ -112,33 +114,28 @@ public class SimpleSocket {
 	
 	public byte[] recieve() throws InterruptedException {
 		byte[] res;
-		synchronized(lock) {
-			res = recieved.take();
-		}
+		res = recieved.take();
 		return res;
 	}
 	
 	public void send(byte[] data) {
 		DatagramPacket packet;
+		System.out.println("sending " + data.length + " bytes");
 		try {
 			packet = wrapData(data, end);
 			socket.send(packet);
-			synchronized(lock) {
-				sending[end] = /*new SimplePacket(*/packet;
-				shift(end);
-				if(!isTimerSet) {
-					timer.schedule(resender, timeout);
-				}
-			}
+//			synchronized(lock) {
+//				sending[end] = /*new SimplePacket(*/packet;
+//				shift(end);
+//				if(!isTimerSet) {
+//					timer.schedule(resender, timeout);
+//				}
+//			}
 			
 		} catch (InstantiationException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}		
-	}
-	
-	private void shift(int a) {
-		a = getShifted(a);
 	}
 	
 	private int getShifted(int a) {
@@ -148,9 +145,13 @@ public class SimpleSocket {
 	private void pushRecieved() {
 		synchronized(lock) {
 			while(recieving[currentACK] != null) {
-				recieved.add(recieving[currentACK].getData());
+				recieved.add(Arrays.copyOfRange(
+						recieving[currentACK].getData(),
+						2,
+						recieving[currentACK].getLength()
+						));
 				recieving[currentACK] = null;
-				shift(currentACK);
+				currentACK = getShifted(currentACK);
 			}
 		}
 	}

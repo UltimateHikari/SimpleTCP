@@ -1,25 +1,22 @@
 import java.io.IOException;
+import java.net.InetAddress;
 
 public class Server implements Runnable{
 
 	@Override
 	public void run() {
-		SimpleServerSocket ssocket = new SimpleServerSocket(6000);
-		SimpleSocket socket = ssocket.accept();
+		try {
+		//SimpleServerSocket ssocket = new SimpleServerSocket(6000);
+		//SimpleSocket socket = ssocket.accept();
+		SimpleSocket socket = new SimpleSocket(6000);
+		socket.connect(InetAddress.getByName("localhost"), 5000);
 		String s = null;
 		for(int i = 0; i < 10; i++) {
-			try {
-				s = new String(socket.recieve());
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+			byte[] data = socket.recieve();
+			s = new String(data);
 			System.out.println(s);
 		}
-		try {
-			socket.close();
-		} catch (InterruptedException | IOException e) {
-			// TODO Auto-generated catch block
+		} catch (IOException | InterruptedException e){
 			e.printStackTrace();
 		}
 	}

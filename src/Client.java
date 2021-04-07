@@ -13,7 +13,7 @@ public class Client implements Runnable {
 				socket.send(data);
 			}
 			
-		} catch (IOException e) {
+		} catch (IOException | InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}

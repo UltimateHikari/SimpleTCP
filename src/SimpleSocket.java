@@ -7,7 +7,7 @@ import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class SimpleSocket {
 	class Resender extends TimerTask{
@@ -38,12 +38,14 @@ public class SimpleSocket {
 	private static final int NOP = 0;
 	private static final int ACK = 1;
 	private static final int SYN = 2;
-	private static final int FIN = 3;
+	private static final int SYNACK = 3;
+	private static final int FIN = 4;
 	
 	private int base = 0;
 	private int end = 0;//nextseqnum
 	private int currentACK = 0;
 	private final Object lock = new Object();
+	private final ReentrantLock connectLock = new ReentrantLock();
 	private DatagramPacket[] sending = new DatagramPacket[BUFFER_SIZE];
 	private DatagramPacket[] recieving = new DatagramPacket[BUFFER_SIZE];
 	private ArrayBlockingQueue<byte[]> recieved = new ArrayBlockingQueue<byte[]>(BUFFER_SIZE);
@@ -56,17 +58,19 @@ public class SimpleSocket {
 	private Timer timer = new Timer();
 	private boolean isTimerSet = false;
 	private int timeout = 1000;
-
+	
+	boolean isRunning = true;
+	boolean isConnected = false;
 	
 	class ReadLoop implements Runnable{
 		private DatagramPacket packet = new DatagramPacket(new byte[ 1024 ], 1024);
 		private int ackindex;
 		private int index;
 		private int flag;
-		boolean isRunning = true;
 		@Override
 		public void run() {
-			while(isRunning) {
+			//TODO again, going to break at 256
+			while(isRunning || base < end) {
 				try {
 					socket.receive(packet);
 					fillHeaders(packet.getData());
@@ -78,7 +82,7 @@ public class SimpleSocket {
 						}
 						pushRecieved();
 						handleACK();
-						sendACK();
+						send(new byte[1], ACK);
 					}else {
 						//well its (not) clearly ack
 						handleACK();
@@ -98,14 +102,9 @@ public class SimpleSocket {
 			System.out.println("got " + ackindex + " " + index + " " + flag + " from " + destPort);
 		}
 		
-		private void sendACK() {
-			send(new byte[1], ACK);
-			//if we had sth to send with we would
-		}
-		
 		private void handleACK() {
 			//if we have something to resend
-			//going to break at 256 tho
+			//TODO going to break at 256 tho
 			switch(flag) {
 			case ACK:
 				synchronized(lock) {
@@ -117,10 +116,12 @@ public class SimpleSocket {
 				break;
 
 			case SYN:
-				sendACK();
+				send(new byte[1], SYNACK);
 				break;
 			case FIN:
-				sendACK();
+				send(new byte[1], ACK);
+				send(new byte[1], FIN);
+				System.out.println("SOCKET: stopped reading");
 				isRunning = false;
 				break;
 			default:
@@ -152,18 +153,24 @@ public class SimpleSocket {
 		return res;
 	}
 	
-	public void send(byte[] data) {
-		send(data, NOP);
+	public void send(byte[] data) throws InterruptedException {
+		connectLock.lock();
+		try {
+			send(data, NOP);
+		}finally {
+			connectLock.unlock();
+		}
 	}
 	
 	private void send(byte[] data, int flag) {
+		//actually can check for is running here
 		DatagramPacket packet;
-		System.out.println("sending " + data.length + " bytes");
+		System.out.println("sending " + data.length + " bytes to "+ destPort);
 		try {
 			packet = wrapData(data, end, flag);
 			socket.send(packet);
 			// fictional, but we have no payload for acks now
-			if(flag == NOP) {
+			if(flag != ACK && flag != SYNACK) {
 				synchronized(lock) {
 					sending[end] = packet;
 					end = getShifted(end);
@@ -187,6 +194,7 @@ public class SimpleSocket {
 		//acking n-th with n+1 ack
 		synchronized(lock) {
 			while(recieving[currentACK] != null) {
+				if(recieving[currentACK].getLength() > HEADER_LEN + 1) {
 				recieved.add(Arrays.copyOfRange(
 						recieving[currentACK].getData(),
 						HEADER_LEN,
@@ -194,6 +202,8 @@ public class SimpleSocket {
 						));
 				recieving[currentACK] = null;
 				currentACK = getShifted(currentACK);
+			
+				}
 			}
 		}
 	}
@@ -201,11 +211,13 @@ public class SimpleSocket {
 	public void connect(InetAddress address_, int port) throws IOException {
 		address = address_;
 		destPort = port;
-		send(new byte[1], FIN);
+		send(new byte[1], SYN);		
 		DatagramPacket packet = new DatagramPacket(new byte[5], 5);
+		
 		socket.receive(packet);
+		base = getShifted(base);
 		System.out.println("connected to " + destPort);
-		//mb want to check sth but nah, take your 3-way handshake
+		//mb want to check for real connection but nah, take your 3-way handshake
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
 	}

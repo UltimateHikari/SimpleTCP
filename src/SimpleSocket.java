@@ -46,7 +46,7 @@ public class SimpleSocket {
 	private Timer timer = new Timer();
 	private boolean isTimerSet = false;
 	private Resender resender = new Resender();
-	private int timeout = 500;
+	private int timeout = 5000;
 	
 	class ReadLoop implements Runnable{
 		private DatagramPacket packet = new DatagramPacket(new byte[ 1024 ], 1024);
@@ -124,13 +124,14 @@ public class SimpleSocket {
 		try {
 			packet = wrapData(data, end);
 			socket.send(packet);
-//			synchronized(lock) {
-//				sending[end] = /*new SimplePacket(*/packet;
-//				shift(end);
-//				if(!isTimerSet) {
-//					timer.schedule(resender, timeout);
-//				}
-//			}
+			synchronized(lock) {
+				sending[end] = /*new SimplePacket(*/packet;
+				end = getShifted(end);
+				if(!isTimerSet) {
+					isTimerSet = true;
+					timer.schedule(resender, timeout);
+				}
+			}
 			
 		} catch (InstantiationException | IOException e) {
 			// TODO Auto-generated catch block

@@ -14,7 +14,7 @@ public class Server implements Runnable{
 		for(int i = 0; i < 2; i++) {
 			byte[] data = socket.recieve();
 			s = new String(data);
-			System.out.println(s);
+			System.out.println("MESSAGE: " +  s);
 		}
 		} catch (IOException | InterruptedException e){
 			e.printStackTrace();

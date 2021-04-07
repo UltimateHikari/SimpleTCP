@@ -15,7 +15,7 @@ public class SimpleSocket {
 		public void run() {
 			synchronized(lock) {
 				System.out.println("timer elapsed");
-				if(getShifted(base) != end) {
+				if(base != end) {
 					System.out.println("now base/end " + base + " " + end);
 					try {
 						socket.send(sending[base]);
@@ -115,6 +115,7 @@ public class SimpleSocket {
 				}
 				base = ackindex > base ? ackindex : base;
 				break;
+
 			case SYN:
 				sendACK();
 				break;
@@ -162,7 +163,7 @@ public class SimpleSocket {
 			packet = wrapData(data, end, flag);
 			socket.send(packet);
 			// fictional, but we have no payload for acks now
-			if(flag != NOP) {
+			if(flag == NOP) {
 				synchronized(lock) {
 					sending[end] = packet;
 					end = getShifted(end);
@@ -188,7 +189,7 @@ public class SimpleSocket {
 			while(recieving[currentACK] != null) {
 				recieved.add(Arrays.copyOfRange(
 						recieving[currentACK].getData(),
-						2,
+						HEADER_LEN,
 						recieving[currentACK].getLength()
 						));
 				recieving[currentACK] = null;
@@ -200,6 +201,11 @@ public class SimpleSocket {
 	public void connect(InetAddress address_, int port) throws IOException {
 		address = address_;
 		destPort = port;
+		send(new byte[1], FIN);
+		DatagramPacket packet = new DatagramPacket(new byte[5], 5);
+		socket.receive(packet);
+		System.out.println("connected to " + destPort);
+		//mb want to check sth but nah, take your 3-way handshake
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
 	}

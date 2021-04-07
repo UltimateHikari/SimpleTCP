@@ -9,7 +9,7 @@ import java.util.TimerTask;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class SimpleSocket {
+public class SimpleSocket {	
 	class Resender extends TimerTask{
 		@Override
 		public void run() {
@@ -132,6 +132,7 @@ public class SimpleSocket {
 	
 	public SimpleSocket(int port) throws IOException {
 		socket = new DatagramSocket(port);
+		connectLock.lock();
 	}
 	
 	private DatagramPacket wrapData(byte[] data, int packetNum, int flag) throws InstantiationException {
@@ -211,12 +212,15 @@ public class SimpleSocket {
 	public void connect(InetAddress address_, int port) throws IOException {
 		address = address_;
 		destPort = port;
-		send(new byte[1], SYN);		
+		try {
+		send(new byte[1], SYN);
 		DatagramPacket packet = new DatagramPacket(new byte[5], 5);
-		
 		socket.receive(packet);
 		base = getShifted(base);
 		System.out.println("connected to " + destPort);
+		} finally {
+			connectLock.unlock();
+		}
 		//mb want to check for real connection but nah, take your 3-way handshake
 		rThread = new Thread(new ReadLoop());
 		rThread.start();

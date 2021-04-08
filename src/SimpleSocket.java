@@ -35,11 +35,6 @@ public class SimpleSocket {
 	private static final int BUFFER_SIZE = 256;
 	//ack seq flag(nop/ack/fyn/syn) /zero-byte[opt]
 	private static final int HEADER_LEN = 3;
-	private static final int NOP = 0;
-	private static final int ACK = 1;
-	private static final int SYN = 2;
-	private static final int SYNACK = 3;
-	private static final int FIN = 4;
 	
 	private int base = 0;
 	private int end = 0;//nextseqnum
@@ -82,7 +77,7 @@ public class SimpleSocket {
 						}
 						pushRecieved();
 						handleACK();
-						send(new byte[1], ACK);
+						send(new byte[1], Flags.ACK);
 					}else {
 						//well its (not) clearly ack
 						handleACK();
@@ -105,27 +100,24 @@ public class SimpleSocket {
 		private void handleACK() {
 			//if we have something to resend
 			//TODO going to break at 256 tho
-			switch(flag) {
-			case ACK:
+			if(flag == Flags.ACK.value) {
 				synchronized(lock) {
 					for(int i = base; i < ackindex; i++) {
 						sending[i] = null;
 					}
 				}
 				base = ackindex > base ? ackindex : base;
-				break;
-
-			case SYN:
-				send(new byte[1], SYNACK);
-				break;
-			case FIN:
-				send(new byte[1], ACK);
-				send(new byte[1], FIN);
+			}
+			
+			if(flag == Flags.SYN.value) {
+				send(new byte[1], Flags.SYNACK);
+			}
+			
+			if(flag == Flags.FIN.value) {
+				send(new byte[1], Flags.ACK);
+				send(new byte[1], Flags.FIN);
 				System.out.println("SOCKET: stopped reading");
 				isRunning = false;
-				break;
-			default:
-				//chill lol
 			}
 		}
 	}
@@ -135,14 +127,14 @@ public class SimpleSocket {
 		connectLock.lock();
 	}
 	
-	private DatagramPacket wrapData(byte[] data, int packetNum, int flag) throws InstantiationException {
+	private DatagramPacket wrapData(byte[] data, int packetNum, Flags flag) throws InstantiationException {
 		if(address == null) {
 			throw new InstantiationException("not connected");
 		}
 		ByteArrayOutputStream bs = new ByteArrayOutputStream();
 		bs.write(currentACK);
 		bs.write(packetNum);
-		bs.write((byte)flag);
+		bs.write((byte)flag.value);
 		bs.writeBytes(data);
 		byte [] wrapped = bs.toByteArray();
 		return new DatagramPacket(wrapped, wrapped.length, address, destPort);
@@ -157,13 +149,13 @@ public class SimpleSocket {
 	public void send(byte[] data) throws InterruptedException {
 		connectLock.lock();
 		try {
-			send(data, NOP);
+			send(data, Flags.NOP);
 		}finally {
 			connectLock.unlock();
 		}
 	}
 	
-	private void send(byte[] data, int flag) {
+	private void send(byte[] data, Flags flag) {
 		//actually can check for is running here
 		DatagramPacket packet;
 		System.out.println("sending " + data.length + " bytes to "+ destPort);
@@ -171,7 +163,7 @@ public class SimpleSocket {
 			packet = wrapData(data, end, flag);
 			socket.send(packet);
 			// fictional, but we have no payload for acks now
-			if(flag != ACK && flag != SYNACK) {
+			if(flag != Flags.ACK && flag != Flags.SYNACK) {
 				synchronized(lock) {
 					sending[end] = packet;
 					end = getShifted(end);
@@ -213,7 +205,7 @@ public class SimpleSocket {
 		address = address_;
 		destPort = port;
 		try {
-			send(new byte[1], SYN);
+			send(new byte[1], Flags.SYN);
 			DatagramPacket packet = new DatagramPacket(new byte[5], 5);
 			socket.receive(packet);
 			base = getShifted(base);

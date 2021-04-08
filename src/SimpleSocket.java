@@ -111,10 +111,6 @@ public class SimpleSocket {
 				base = ackindex > base ? ackindex : base;
 			}
 			
-			if(flag == Flags.SYN.value) {
-				send(new byte[1], Flags.SYNACK);
-			}
-			
 			if(flag == Flags.FIN.value) {
 				send(new byte[1], Flags.ACK);
 				send(new byte[1], Flags.FIN);
@@ -152,7 +148,7 @@ public class SimpleSocket {
 			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
 			socket.send(packet);
 			// fictional, but we have no payload for acks now
-			if(flag != Flags.ACK && flag != Flags.SYNACK) {
+			if(flag != Flags.ACK) {
 				synchronized(lock) {
 					sending[end] = packet;
 					end = getShifted(end);
@@ -194,10 +190,10 @@ public class SimpleSocket {
 		address = address_;
 		destPort = port;
 		try {
-			send(new byte[1], Flags.SYN);
-			DatagramPacket packet = new DatagramPacket(new byte[5], 5);
-			socket.receive(packet);
-			base = getShifted(base);
+			sendSYN();
+			int serverSeq = recvSYNACK();
+			send3rdACK(serverSeq);
+			
 			System.out.println("connected to " + destPort);
 		} finally {
 			connectLock.unlock();
@@ -205,6 +201,38 @@ public class SimpleSocket {
 		//mb want to check for real connection but nah, take your 3-way handshake
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
+	}
+
+	private void sendSYN() {
+		send(new byte[1], Flags.SYN);
+	}
+	
+	private int recvSYNACK() {
+		DatagramPacket packet = new DatagramPacket(new byte[10], 10);
+		try {
+			socket.receive(packet);
+			System.out.println("got " + packet.getData()[3] + " from "  + packet.getPort());
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return packet.getData()[1];
+	}
+	
+	private void send3rdACK(int serverSeq) {
+		try {
+			socket.send(PacketWrapper.wrap(
+					new byte[1],
+					serverSeq + 1,
+					base,
+					Flags.ACK,
+					address,
+					destPort));
+		} catch (InstantiationException | IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		base = getShifted(base);
 	}
 	
 	public void softConnect(InetAddress address_, int port) {

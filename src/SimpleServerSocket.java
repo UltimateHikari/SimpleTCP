@@ -25,7 +25,9 @@ public class SimpleServerSocket {
 	
 	public SimpleSocket accept() throws IOException, InstantiationException {
 		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
-		SimpleSocket res = new SimpleSocket(childPort);
+		//TODO split in recvSYN/sendSYNACK/recvACK
+		//send with synack corrected desPort
+		//cause now client is spamming server like damned
 		
 		socket.receive(recvpacket);
 		int destPort = recvpacket.getPort();
@@ -59,6 +61,8 @@ public class SimpleServerSocket {
 		timer.cancel();
 		
 		System.out.println("SERVER: connected to " + destPort);
+		SimpleSocket res = new SimpleSocket(childPort, recvACK);
+
 		res.softConnect(InetAddress.getByName("localhost"), 5000);
 		childPort++;
 		return res;

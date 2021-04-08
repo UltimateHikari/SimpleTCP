@@ -17,6 +17,7 @@ public class SimpleSocket {
 				if(base != end) {
 					log("base/end " + base + " " + end);
 					try {
+						log("resending " + base);
 						socket.send(sending[base]);
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
@@ -121,6 +122,11 @@ public class SimpleSocket {
 		}
 	}
 	
+	public SimpleSocket(int port, int destACK) throws IOException {
+		this(port);
+		currentACK = destACK;
+	}
+	
 	public SimpleSocket(int port) throws IOException {
 		myPort = port;
 		socket = new DatagramSocket(port);
@@ -210,6 +216,7 @@ public class SimpleSocket {
 	}
 	
 	private int recvSYNACK() {
+		//TODO correct destPort
 		DatagramPacket packet = new DatagramPacket(new byte[10], 10);
 		try {
 			socket.receive(packet);

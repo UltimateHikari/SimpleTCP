@@ -213,15 +213,22 @@ public class SimpleSocket {
 		address = address_;
 		destPort = port;
 		try {
-		send(new byte[1], SYN);
-		DatagramPacket packet = new DatagramPacket(new byte[5], 5);
-		socket.receive(packet);
-		base = getShifted(base);
-		System.out.println("connected to " + destPort);
+			send(new byte[1], SYN);
+			DatagramPacket packet = new DatagramPacket(new byte[5], 5);
+			socket.receive(packet);
+			base = getShifted(base);
+			System.out.println("connected to " + destPort);
 		} finally {
 			connectLock.unlock();
 		}
 		//mb want to check for real connection but nah, take your 3-way handshake
+		rThread = new Thread(new ReadLoop());
+		rThread.start();
+	}
+	
+	public void softConnect(InetAddress address_, int port) {
+		address = address_;
+		destPort = port;
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
 	}
@@ -232,4 +239,5 @@ public class SimpleSocket {
 		rThread.interrupt();
 		//sThread.interrupt();
 	}
+
 }

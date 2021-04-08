@@ -39,8 +39,10 @@ public class SimpleSocket {
 	private int base = 0;
 	private int end = 0;//nextseqnum
 	private int currentACK = 0;
+	
 	private final Object lock = new Object();
 	private final ReentrantLock connectLock = new ReentrantLock();
+	
 	private DatagramPacket[] sending = new DatagramPacket[BUFFER_SIZE];
 	private DatagramPacket[] recieving = new DatagramPacket[BUFFER_SIZE];
 	private ArrayBlockingQueue<byte[]> recieved = new ArrayBlockingQueue<byte[]>(BUFFER_SIZE);
@@ -127,19 +129,6 @@ public class SimpleSocket {
 		connectLock.lock();
 	}
 	
-	private DatagramPacket wrapData(byte[] data, int packetNum, Flags flag) throws InstantiationException {
-		if(address == null) {
-			throw new InstantiationException("not connected");
-		}
-		ByteArrayOutputStream bs = new ByteArrayOutputStream();
-		bs.write(currentACK);
-		bs.write(packetNum);
-		bs.write((byte)flag.value);
-		bs.writeBytes(data);
-		byte [] wrapped = bs.toByteArray();
-		return new DatagramPacket(wrapped, wrapped.length, address, destPort);
-	}
-	
 	public byte[] recieve() throws InterruptedException {
 		byte[] res;
 		res = recieved.take();
@@ -160,7 +149,7 @@ public class SimpleSocket {
 		DatagramPacket packet;
 		System.out.println("sending " + data.length + " bytes to "+ destPort);
 		try {
-			packet = wrapData(data, end, flag);
+			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
 			socket.send(packet);
 			// fictional, but we have no payload for acks now
 			if(flag != Flags.ACK && flag != Flags.SYNACK) {

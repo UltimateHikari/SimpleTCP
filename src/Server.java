@@ -16,7 +16,7 @@ public class Server implements Runnable{
 			s = new String(data);
 			System.out.println("MESSAGE: " +  s);
 		}
-		} catch (IOException | InterruptedException | InstantiationException e){
+		} catch (IOException | InterruptedException e){
 			e.printStackTrace();
 		}
 	}

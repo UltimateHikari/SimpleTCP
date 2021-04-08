@@ -237,6 +237,7 @@ public class SimpleSocket {
 					Flags.ACK,
 					address,
 					destPort));
+			destPort++; //DELET THIS AND FIX AS A MAN
 		} catch (InstantiationException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

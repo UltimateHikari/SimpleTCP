@@ -4,6 +4,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -23,52 +24,86 @@ public class SimpleServerSocket {
 		socket = new DatagramSocket(port_);
 	}
 	
-	public SimpleSocket accept() throws IOException, InstantiationException {
-		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
-		//TODO split in recvSYN/sendSYNACK/recvACK
-		//send with synack corrected desPort
-		//cause now client is spamming server like damned
-		
-		socket.receive(recvpacket);
-		int destPort = recvpacket.getPort();
-		int destSeq = recvpacket.getData()[1];
-		
-		packet = PacketWrapper.wrap(new byte[1], destSeq + 1, 0, Flags.SYNACK, address, destPort);
-		socket.send(packet);
+	public SimpleSocket accept(){
 		Timer timer = new Timer();
-		timer.schedule(new TimerTask() {
+		int[] dest = recvSYN();
+		sendSYNACK(dest, timer);
+		int recvACK = recvACK(dest, timer);
+		//TODO no penalties for exceptions here;
+		//single-threaded also
+		System.out.println("SERVER: connected to " + dest[0]);
+		SimpleSocket res = null;
+		try {
+			res = new SimpleSocket(childPort, recvACK);
+			res.softConnect(InetAddress.getByName("localhost"), 5000);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 
-			@Override
-			public void run() {
-				try {
-					System.out.println("SERVER: timer elapsed");
-					socket.send(packet);
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-			
-		}, timeout);
-		
-		int recvDest, recvACK;
-		do {
-			socket.receive(recvpacket);
-			recvDest = recvpacket.getPort();
-			recvACK = recvpacket.getData()[0];
-			System.out.println("SERVER: got 3rd ack");
-		} while(recvDest != destPort || recvACK != 1);
-		timer.cancel();
-		
-		System.out.println("SERVER: connected to " + destPort);
-		SimpleSocket res = new SimpleSocket(childPort, recvACK);
-
-		res.softConnect(InetAddress.getByName("localhost"), 5000);
 		childPort++;
 		return res;
 	}
+	private int[] recvSYN() {
+		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
+		try {
+			socket.receive(recvpacket);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		int destPort = recvpacket.getPort();
+		int destSeq = recvpacket.getData()[1];
+		return new int[] {destPort, destSeq};
+	}
 	
-	public void close() {
+	private void sendSYNACK(int[] dest, Timer timer) {
+		try {
+			packet = PacketWrapper.wrap(
+					ByteBuffer.allocate(4).putInt(childPort).array(),
+					dest[1] + 1,
+					0,
+					Flags.SYNACK,
+					address,
+					dest[0]);
+			socket.send(packet);
+		} catch (InstantiationException | IOException e) {
+			e.printStackTrace();
+		}
 		
+		timer.schedule(
+			new TimerTask() {
+				@Override
+				public void run() {
+					try {
+						System.out.println("SERVER: timer elapsed");
+						socket.send(packet);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			},
+			timeout);
+	}
+	
+	private int recvACK(int[] dest, Timer timer) {
+		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
+		int recvDest, recvACK = 0;
+		do {
+			try {
+				socket.receive(recvpacket);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			recvDest = recvpacket.getPort();
+			recvACK = recvpacket.getData()[0];
+			System.out.println("SERVER: got 3rd ack");
+		} while(recvDest != dest[0] || recvACK != 1);
+		timer.cancel();
+		return recvACK;
+	}
+
+	public void close() {
+		//TODO
 	}
 }

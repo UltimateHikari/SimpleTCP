@@ -3,8 +3,8 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -37,7 +37,7 @@ public class SimpleSocket {
 	private static final int BUFFER_SIZE = 256;
 	//ack seq flag(nop/ack/fyn/syn) /zero-byte[opt]
 	private static final int HEADER_LEN = 3;
-	private static final boolean LOG_LEVEL = false;
+	private static final boolean LOG_LEVEL = true;
 	
 	private int base = 0;
 	private int end = 0;//nextseqnum
@@ -63,6 +63,7 @@ public class SimpleSocket {
 	
 	boolean isRunning = true;
 	boolean isConnected = false;
+	private Random random = new Random();
 	
 	class ReadLoop implements Runnable{
 		private DatagramPacket packet = new DatagramPacket(new byte[ 1024 ], 1024);
@@ -155,10 +156,14 @@ public class SimpleSocket {
 	private void send(byte[] data, Flags flag) {
 		//actually can check for is running here
 		DatagramPacket packet;
-		log("sending " + data.length + " bytes to "+ destPort);
 		try {
 			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
-			socket.send(packet);
+			if(random.nextInt(10) > 8) {
+				log("NOT sending " + data.length + " bytes to "+ destPort);
+			}else {
+				log("sending " + data.length + " bytes to "+ destPort);
+				socket.send(packet);
+			}
 			// fictional, but we have no payload for acks now
 			if(flag != Flags.ACK) {
 				synchronized(lock) {

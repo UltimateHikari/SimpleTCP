@@ -37,6 +37,7 @@ public class SimpleSocket {
 	private static final int BUFFER_SIZE = 256;
 	//ack seq flag(nop/ack/fyn/syn) /zero-byte[opt]
 	private static final int HEADER_LEN = 3;
+	private static final boolean LOG_LEVEL = false;
 	
 	private int base = 0;
 	private int end = 0;//nextseqnum
@@ -262,7 +263,9 @@ public class SimpleSocket {
 	}
 	
 	private void log(String s) {
-		System.out.println("[" + myPort + "]: " + s);
+		if(LOG_LEVEL) {
+			System.out.println("[" + myPort + "]: " + s);
+		}
 	}
 	
 	public void close() throws InterruptedException, IOException {

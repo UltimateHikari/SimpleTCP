@@ -1,4 +1,3 @@
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -14,9 +13,9 @@ public class SimpleSocket {
 		@Override
 		public void run() {
 			synchronized(lock) {
-				System.out.println("timer elapsed");
+				log("timer elapsed");
 				if(base != end) {
-					System.out.println("now base/end " + base + " " + end);
+					log("base/end " + base + " " + end);
 					try {
 						socket.send(sending[base]);
 					} catch (IOException e) {
@@ -26,7 +25,7 @@ public class SimpleSocket {
 					isTimerSet = true;
 					timer.schedule(new Resender(), timeout);
 				}else {
-					System.out.println("timer stopped");
+					log("timer stopped");
 				}
 			}
 		}
@@ -49,6 +48,7 @@ public class SimpleSocket {
 	
 	private Thread rThread;
 	private DatagramSocket socket;
+	private int myPort;
 	private int destPort = 3000; //placeholder, need to connect anyway
 	private InetAddress address = null;
 	
@@ -96,7 +96,8 @@ public class SimpleSocket {
 			ackindex = data[0];
 			index = data[1];
 			flag = data[2];
-			System.out.println("got " + ackindex + " " + index + " " + flag + " from " + destPort);
+			log("got " + ackindex + " " + index + " "
+			+ flag + " from " + destPort);
 		}
 		
 		private void handleACK() {
@@ -114,13 +115,14 @@ public class SimpleSocket {
 			if(flag == Flags.FIN.value) {
 				send(new byte[1], Flags.ACK);
 				send(new byte[1], Flags.FIN);
-				System.out.println("SOCKET: stopped reading");
+				log("stopped reading");
 				isRunning = false;
 			}
 		}
 	}
 	
 	public SimpleSocket(int port) throws IOException {
+		myPort = port;
 		socket = new DatagramSocket(port);
 		connectLock.lock();
 	}
@@ -143,7 +145,7 @@ public class SimpleSocket {
 	private void send(byte[] data, Flags flag) {
 		//actually can check for is running here
 		DatagramPacket packet;
-		System.out.println("sending " + data.length + " bytes to "+ destPort);
+		log("sending " + data.length + " bytes to "+ destPort);
 		try {
 			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
 			socket.send(packet);
@@ -194,7 +196,7 @@ public class SimpleSocket {
 			int serverSeq = recvSYNACK();
 			send3rdACK(serverSeq);
 			
-			System.out.println("connected to " + destPort);
+			log("connected to " + destPort);
 		} finally {
 			connectLock.unlock();
 		}
@@ -211,7 +213,7 @@ public class SimpleSocket {
 		DatagramPacket packet = new DatagramPacket(new byte[10], 10);
 		try {
 			socket.receive(packet);
-			System.out.println("got " + packet.getData()[3] + " from "  + packet.getPort());
+			log("got " + packet.getData()[3] + " from "  + packet.getPort());
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -240,6 +242,10 @@ public class SimpleSocket {
 		destPort = port;
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
+	}
+	
+	private void log(String s) {
+		System.out.println("[" + myPort + "]: " + s);
 	}
 	
 	public void close() throws InterruptedException, IOException {

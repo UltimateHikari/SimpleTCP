@@ -2,6 +2,8 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -51,6 +53,7 @@ public class SimpleSocket {
 	private DatagramSocket socket;
 	private int myPort;
 	private int destPort = 3000; //placeholder, need to connect anyway
+	private int correctedDestPort = 3000;
 	private InetAddress address = null;
 	
 	private Timer timer = new Timer();
@@ -216,13 +219,19 @@ public class SimpleSocket {
 	}
 	
 	private int recvSYNACK() {
-		//TODO correct destPort
 		DatagramPacket packet = new DatagramPacket(new byte[10], 10);
 		try {
 			socket.receive(packet);
-			log("got " + packet.getData()[3] + " from "  + packet.getPort());
+			correctedDestPort = ByteBuffer.wrap(
+					Arrays.copyOfRange(
+							packet.getData(), 
+							HEADER_LEN,
+							HEADER_LEN + 4)
+					).getInt();
+			log("heard " + correctedDestPort + " from "  + packet.getPort());
+			//destPort = newDest;
+		
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return packet.getData()[1];
@@ -237,7 +246,7 @@ public class SimpleSocket {
 					Flags.ACK,
 					address,
 					destPort));
-			destPort++; //DELET THIS AND FIX AS A MAN
+			destPort = correctedDestPort;
 		} catch (InstantiationException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

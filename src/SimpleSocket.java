@@ -59,14 +59,14 @@ public class SimpleSocket {
 	
 	private Timer timer = new Timer();
 	private boolean isTimerSet = false;
-	private int timeout = 1000;
+	private int timeout = 200;
 	
 	boolean isRunning = true;
 	boolean isConnected = false;
 	private Random random = new Random();
 	
 	class ReadLoop implements Runnable{
-		private DatagramPacket packet = new DatagramPacket(new byte[ 1024 ], 1024);
+		private DatagramPacket packet; 
 		private int ackindex;
 		private int index;
 		private int flag;
@@ -75,12 +75,16 @@ public class SimpleSocket {
 			//TODO again, going to break at 256
 			while(isRunning || base < end) {
 				try {
+					packet = new DatagramPacket(new byte[ 1024 ], 1024);
 					socket.receive(packet);
 					fillHeaders(packet.getData());
 					if(packet.getLength() > HEADER_LEN + 1) {
 						synchronized(lock) {
-							if(recieving[index] == null) {
+							if(recieving[index] == null && currentACK <= index) {
 								recieving[index] = packet;
+								log("taking " + index);
+							} else {
+								log("discarding " + index);
 							}
 						}
 						pushRecieved();
@@ -158,7 +162,7 @@ public class SimpleSocket {
 		DatagramPacket packet;
 		try {
 			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
-			if(random.nextInt(10) > 8) {
+			if(random.nextInt(10) > 6) {
 				log("NOT sending " + data.length + " bytes to "+ destPort);
 			}else {
 				log("sending " + data.length + " bytes to "+ destPort);
@@ -189,6 +193,7 @@ public class SimpleSocket {
 		//acking n-th with n+1 ack
 		synchronized(lock) {
 			while(recieving[currentACK] != null) {
+				log("pushing " + currentACK);
 				if(recieving[currentACK].getLength() > HEADER_LEN + 1) {
 				recieved.add(Arrays.copyOfRange(
 						recieving[currentACK].getData(),

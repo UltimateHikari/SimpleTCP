@@ -100,6 +100,7 @@ public class SimpleSocket {
 			}
 			log("closed");
 			socket.close();
+			timer.cancel();
 		}
 		
 		private void fillHeaders(byte[] data) {
@@ -168,13 +169,13 @@ public class SimpleSocket {
 		DatagramPacket packet;
 		try {
 			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
-			//if(random.nextInt(10) > 6) {
-			//	log("NOT sending " + data.length + " bytes to "+ destPort);
-			//}else {
+			if(random.nextInt(10) > 6) {
+				log("NOT sending " + data.length + " bytes to "+ destPort);
+			}else {
 				log("sending "+ flag + " ; " + data.length + " bytes to "+ destPort);
 				socket.send(packet);
-			//}
-			// fictional, but we have no payload for acks now
+			}
+			// fictional, but since we have no payload for acks
 			if(flag != Flags.ACK) {
 				synchronized(lock) {
 					sending[end] = packet;

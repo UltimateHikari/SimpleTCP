@@ -2,6 +2,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Random;
@@ -73,33 +74,32 @@ public class SimpleSocket {
 		@Override
 		public void run() {
 			//TODO again, going to break at 256
-			while(isRunning || base < end) {
+			while(isRunning || base < end || isConnected) {
 				try {
 					packet = new DatagramPacket(new byte[ 1024 ], 1024);
 					socket.receive(packet);
 					fillHeaders(packet.getData());
-					if(packet.getLength() > HEADER_LEN + 1) {
 						synchronized(lock) {
 							if(recieving[index] == null && currentACK <= index) {
 								recieving[index] = packet;
-								log("taking " + index);
+								//log("taking " + index);
 							} else {
-								log("discarding " + index);
+								//log("discarding " + index);
+							}
+							pushRecieved();
+							if(eligibleForACK(packet)) {
+								send(new byte[1], Flags.ACK);
 							}
 						}
-						pushRecieved();
-						handleACK();
-						send(new byte[1], Flags.ACK);
-					}else {
-						//well its (not) clearly ack
-						handleACK();
-					}
-					
+						handleFlag();
+
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
+			log("closed");
+			socket.close();
 		}
 		
 		private void fillHeaders(byte[] data) {
@@ -110,7 +110,7 @@ public class SimpleSocket {
 			+ flag + " from " + destPort);
 		}
 		
-		private void handleACK() {
+		private void handleFlag() {
 			//if we have something to resend
 			//TODO going to break at 256 tho
 			if(flag == Flags.ACK.value) {
@@ -123,9 +123,11 @@ public class SimpleSocket {
 			}
 			
 			if(flag == Flags.FIN.value) {
-				send(new byte[1], Flags.ACK);
-				send(new byte[1], Flags.FIN);
-				log("stopped reading");
+				//means other side stopped sending useful packets
+				log("got fin");
+//				if(isConnected) {
+//					send(new byte[1], Flags.FIN);
+//				}
 				isRunning = false;
 			}
 		}
@@ -142,13 +144,17 @@ public class SimpleSocket {
 		connectLock.lock();
 	}
 	
-	public byte[] recieve() throws InterruptedException {
-		byte[] res;
-		res = recieved.take();
-		return res;
+	public byte[] recieve() throws InterruptedException, SocketException{
+		if(isConnected || base < end || recieved.size() > 0) {
+			byte[] res;
+			res = recieved.take();
+			return res;
+		}else {
+			throw new SocketException("Socket is closed");
+		}
 	}
 	
-	public void send(byte[] data) throws InterruptedException {
+	public void send(byte[] data) throws InterruptedException, SocketException {
 		connectLock.lock();
 		try {
 			send(data, Flags.NOP);
@@ -162,12 +168,12 @@ public class SimpleSocket {
 		DatagramPacket packet;
 		try {
 			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
-			if(random.nextInt(10) > 6) {
-				log("NOT sending " + data.length + " bytes to "+ destPort);
-			}else {
-				log("sending " + data.length + " bytes to "+ destPort);
+			//if(random.nextInt(10) > 6) {
+			//	log("NOT sending " + data.length + " bytes to "+ destPort);
+			//}else {
+				log("sending "+ flag + " ; " + data.length + " bytes to "+ destPort);
 				socket.send(packet);
-			}
+			//}
 			// fictional, but we have no payload for acks now
 			if(flag != Flags.ACK) {
 				synchronized(lock) {
@@ -189,22 +195,27 @@ public class SimpleSocket {
 		return (a + 1) % BUFFER_SIZE;
 	}
 	
+	private boolean hasPayload(DatagramPacket packet) {
+		return (packet.getLength() > HEADER_LEN + 1);
+	}
+	
+	private boolean eligibleForACK(DatagramPacket packet) {
+		return (packet.getData()[2] != Flags.ACK.value);
+	}
+	
 	private void pushRecieved() {
 		//acking n-th with n+1 ack
-		synchronized(lock) {
-			while(recieving[currentACK] != null) {
-				log("pushing " + currentACK);
-				if(recieving[currentACK].getLength() > HEADER_LEN + 1) {
-				recieved.add(Arrays.copyOfRange(
-						recieving[currentACK].getData(),
-						HEADER_LEN,
-						recieving[currentACK].getLength()
-						));
-				recieving[currentACK] = null;
-				currentACK = getShifted(currentACK);
-			
-				}
+		while(recieving[currentACK] != null) {
+			//log("pushing " + currentACK);
+			if(hasPayload(recieving[currentACK])) {
+			recieved.add(Arrays.copyOfRange(
+					recieving[currentACK].getData(),
+					HEADER_LEN,
+					recieving[currentACK].getLength()
+					));
 			}
+			recieving[currentACK] = null;
+			currentACK = getShifted(currentACK);
 		}
 	}
 	
@@ -216,6 +227,7 @@ public class SimpleSocket {
 			int serverSeq = recvSYNACK();
 			send3rdACK(serverSeq);
 			
+			isConnected = true;
 			log("connected to " + destPort);
 		} finally {
 			connectLock.unlock();
@@ -268,6 +280,7 @@ public class SimpleSocket {
 	public void softConnect(InetAddress address_, int port) {
 		address = address_;
 		destPort = port;
+		isConnected = true;
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
 	}
@@ -279,10 +292,12 @@ public class SimpleSocket {
 	}
 	
 	public void close() throws InterruptedException, IOException {
-		//ССЗБ if closed early
-		socket.close();
-		rThread.interrupt();
-		//sThread.interrupt();
+		// send fin when done writing
+		// stop recv when got fin
+		log("closing...");
+		send(new byte[1], Flags.FIN);
+		isConnected = false;
+		// then getting ack and closing in readloop
 	}
 
 }

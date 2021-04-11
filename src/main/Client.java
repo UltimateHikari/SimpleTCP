@@ -1,5 +1,8 @@
+package main;
 import java.io.IOException;
 import java.net.InetAddress;
+
+import stcp.SimpleSocket;
 
 public class Client implements Runnable {
 	

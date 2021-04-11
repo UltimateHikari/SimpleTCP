@@ -1,4 +1,8 @@
+package main;
 import java.io.IOException;
+
+import stcp.SimpleServerSocket;
+import stcp.SimpleSocket;
 
 public class Server implements Runnable{
 

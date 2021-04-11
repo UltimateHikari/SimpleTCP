@@ -1,3 +1,4 @@
+package stcp;
 
 public enum Flags {
 	NOP(0),

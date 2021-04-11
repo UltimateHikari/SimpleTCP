@@ -1,3 +1,4 @@
+package stcp;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -10,6 +11,9 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
+
+//TODO remove values
+//TODO delegate exceptions on higher level
 
 public class SimpleSocket {	
 	class Resender extends TimerTask{
@@ -79,19 +83,19 @@ public class SimpleSocket {
 					packet = new DatagramPacket(new byte[ 1024 ], 1024);
 					socket.receive(packet);
 					fillHeaders(packet.getData());
-						synchronized(lock) {
-							if(recieving[index] == null && currentACK <= index) {
-								recieving[index] = packet;
-								//log("taking " + index);
-							} else {
-								//log("discarding " + index);
-							}
-							pushRecieved();
-							if(eligibleForACK(packet)) {
-								send(new byte[1], Flags.ACK);
-							}
+					synchronized(lock) {
+						if(recieving[index] == null && currentACK <= index) {
+							recieving[index] = packet;
+							//log("taking " + index);
+						} else {
+							//log("discarding " + index);
 						}
-						handleFlag();
+						pushRecieved();
+						if(eligibleForACK(packet)) {
+							send(new byte[1], Flags.ACK);
+						}
+					}
+					handleFlag();
 
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
@@ -201,7 +205,7 @@ public class SimpleSocket {
 	}
 	
 	private boolean eligibleForACK(DatagramPacket packet) {
-		return (packet.getData()[2] != Flags.ACK.value);
+		return (packet.getData()[2] != Flags.ACK.ordinal());
 	}
 	
 	private void pushRecieved() {

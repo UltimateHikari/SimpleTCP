@@ -2,6 +2,7 @@ package stcp;
 import java.io.ByteArrayOutputStream;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
+import java.net.SocketException;
 
 /*
  * need this guy in both server and common sockets
@@ -15,9 +16,9 @@ public class PacketWrapper {
 			Flags flag,
 			InetAddress address,
 			int destPort
-			) throws InstantiationException {
+			) throws SocketException {
 		if(address == null) {
-			throw new InstantiationException("not connected");
+			throw new SocketException("Socket is not connected");
 		}
 		ByteArrayOutputStream bs = new ByteArrayOutputStream();
 		bs.write(currentACK);

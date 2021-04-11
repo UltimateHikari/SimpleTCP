@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class SimpleServerSocket {
+public class SimpleServerSocket implements AutoCloseable{
 	private DatagramSocket socket;
 	private static final int timeout  = 1000;
 	private int port;
@@ -25,51 +25,39 @@ public class SimpleServerSocket {
 		socket = new DatagramSocket(port_);
 	}
 	
-	public SimpleSocket accept(){
+	public SimpleSocket accept() throws SocketException, IOException{
 		Timer timer = new Timer();
 		int[] dest = recvSYN();
 		sendSYNACK(dest, timer);
 		int recvACK = recvACK(dest, timer);
-		//TODO no penalties for exceptions here;
+		//TODO no handling for exceptions here;
 		//single-threaded also
 		System.out.println("SERVER: connected to " + dest[0]);
 		SimpleSocket res = null;
-		try {
-			res = new SimpleSocket(childPort, recvACK);
-			res.softConnect(InetAddress.getByName("localhost"), 5000);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		res = new SimpleSocket(childPort, recvACK);
+		res.softConnect(InetAddress.getByName("localhost"), 5000);
 
 		childPort++;
 		return res;
 	}
-	private int[] recvSYN() {
+	private int[] recvSYN() throws IOException {
 		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
-		try {
-			socket.receive(recvpacket);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		socket.receive(recvpacket);
 		int destPort = recvpacket.getPort();
 		int destSeq = recvpacket.getData()[1];
 		return new int[] {destPort, destSeq};
 	}
 	
-	private void sendSYNACK(int[] dest, Timer timer) {
-		try {
-			packet = PacketWrapper.wrap(
-					ByteBuffer.allocate(4).putInt(childPort).array(),
-					dest[1] + 1,
-					0,
-					Flags.SYNACK,
-					address,
-					dest[0]);
-			socket.send(packet);
-		} catch (InstantiationException | IOException e) {
-			e.printStackTrace();
-		}
+	private void sendSYNACK(int[] dest, Timer timer) throws SocketException, IOException {
+		packet = PacketWrapper.wrap(
+				ByteBuffer.allocate(4).putInt(childPort).array(),
+				dest[1] + 1,
+				0,
+				Flags.SYNACK,
+				address,
+				dest[0]);
+		socket.send(packet);
+
 		
 		timer.schedule(
 			new TimerTask() {

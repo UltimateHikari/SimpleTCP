@@ -12,40 +12,36 @@ import java.util.TimerTask;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
-//TODO remove values
-//TODO delegate exceptions on higher level
-
 public class SimpleSocket {	
 	class Resender extends TimerTask{
 		@Override
 		public void run() {
 			synchronized(lock) {
-				log("timer elapsed");
+				log("Timer elapsed");
 				if(base != end) {
-					log("base/end " + base + " " + end);
+					log("Base/end " + base + " " + end);
 					try {
-						log("resending " + base);
+						log("Resending " + base);
 						socket.send(sending[base]);
 					} catch (IOException e) {
-						// TODO Auto-generated catch block
+						//because in different thread
 						e.printStackTrace();
 					}
 					isTimerSet = true;
 					timer.schedule(new Resender(), timeout);
 				}else {
-					log("timer stopped");
+					log("Timer stopped");
 				}
 			}
 		}
 	}
 	
 	private static final int BUFFER_SIZE = 256;
-	//ack seq flag(nop/ack/fyn/syn) /zero-byte[opt]
 	private static final int HEADER_LEN = 3;
 	private static final boolean LOG_LEVEL = true;
 	
 	private int base = 0;
-	private int end = 0;//nextseqnum
+	private int end = 0; //nextseqnum
 	private int currentACK = 0;
 	
 	private final Object lock = new Object();
@@ -59,7 +55,7 @@ public class SimpleSocket {
 	private DatagramSocket socket;
 	private int myPort;
 	private int destPort = 3000; //placeholder, need to connect anyway
-	private int correctedDestPort = 3000;
+	private int correctedDestPort = 3000; //same
 	private InetAddress address = null;
 	
 	private Timer timer = new Timer();
@@ -98,11 +94,10 @@ public class SimpleSocket {
 					handleFlag();
 
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
-			log("closed");
+			log("Closed");
 			socket.close();
 			timer.cancel();
 		}
@@ -129,16 +124,14 @@ public class SimpleSocket {
 			
 			if(flag == Flags.FIN.ordinal()) {
 				//means other side stopped sending useful packets
-				log("got fin");
-//				if(isConnected) {
-//					send(new byte[1], Flags.FIN);
-//				}
+				log("got FIN");
 				isRunning = false;
 			}
 		}
 	}
 	
-	public SimpleSocket(int port, int destACK) throws IOException {
+	SimpleSocket(int port, int destACK) throws IOException {
+		//for server use, so packet-wide
 		this(port);
 		currentACK = destACK;
 	}
@@ -149,7 +142,7 @@ public class SimpleSocket {
 		connectLock.lock();
 	}
 	
-	public byte[] recieve() throws InterruptedException, SocketException{
+	public byte[] recieve() throws SocketException, InterruptedException{
 		if(isConnected || base < end || recieved.size() > 0) {
 			byte[] res;
 			res = recieved.take();
@@ -159,7 +152,7 @@ public class SimpleSocket {
 		}
 	}
 	
-	public void send(byte[] data) throws InterruptedException, SocketException {
+	public void send(byte[] data) throws InterruptedException, SocketException, IOException {
 		connectLock.lock();
 		try {
 			send(data, Flags.NOP);
@@ -168,32 +161,27 @@ public class SimpleSocket {
 		}
 	}
 	
-	private void send(byte[] data, Flags flag) {
+	private void send(byte[] data, Flags flag) throws SocketException, IOException {
 		//actually can check for is running here
 		DatagramPacket packet;
-		try {
-			packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
-			if(random.nextInt(10) > 6) {
-				log("NOT sending " + data.length + " bytes to "+ destPort);
-			}else {
-				log("sending "+ flag + " ; " + data.length + " bytes to "+ destPort);
-				socket.send(packet);
-			}
-			// fictional, but since we have no payload for acks
-			if(flag != Flags.ACK) {
-				synchronized(lock) {
-					sending[end] = packet;
-					end = getShifted(end);
-					if(!isTimerSet) {
-						isTimerSet = true;
-						timer.schedule(new Resender(), timeout);
-					}
+		packet = PacketWrapper.wrap(data, currentACK, end, flag, address, destPort);
+		if(random.nextInt(10) > 6) {
+			log("NOT sending " + data.length + " bytes to "+ destPort);
+		}else {
+			log("sending "+ flag + " ; " + data.length + " bytes to "+ destPort);
+			socket.send(packet);
+		}
+		// fictional, but since we have no payload for acks
+		if(flag != Flags.ACK) {
+			synchronized(lock) {
+				sending[end] = packet;
+				end = getShifted(end);
+				if(!isTimerSet) {
+					isTimerSet = true;
+					timer.schedule(new Resender(), timeout);
 				}
 			}
-		} catch (InstantiationException | IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}		
+		}	
 	}
 	
 	private int getShifted(int a) {
@@ -224,7 +212,7 @@ public class SimpleSocket {
 		}
 	}
 	
-	public void connect(InetAddress address_, int port) throws IOException {
+	public void connect(InetAddress address_, int port) throws SocketException, IOException {
 		address = address_;
 		destPort = port;
 		try {
@@ -238,47 +226,38 @@ public class SimpleSocket {
 			connectLock.unlock();
 		}
 		//mb want to check for real connection but nah, take your 3-way handshake
+		//(need timeout in recvSYNACK, but in our terms server always exists)
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
 	}
 
-	private void sendSYN() {
+	private void sendSYN() throws IOException {
 		send(new byte[1], Flags.SYN);
 	}
 	
-	private int recvSYNACK() {
+	private int recvSYNACK() throws IOException {
 		DatagramPacket packet = new DatagramPacket(new byte[10], 10);
-		try {
-			socket.receive(packet);
-			correctedDestPort = ByteBuffer.wrap(
-					Arrays.copyOfRange(
-							packet.getData(), 
-							HEADER_LEN,
-							HEADER_LEN + 4)
-					).getInt();
-			log("heard " + correctedDestPort + " from "  + packet.getPort());
-			//destPort = newDest;
-		
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		socket.receive(packet);
+		correctedDestPort = ByteBuffer.wrap(
+				Arrays.copyOfRange(
+						packet.getData(), 
+						HEADER_LEN,
+						HEADER_LEN + 4)
+				).getInt();
+		log("heard " + correctedDestPort + " from "  + packet.getPort());
+		//destPort = newDest;
 		return packet.getData()[1];
 	}
 	
-	private void send3rdACK(int serverSeq) {
-		try {
-			socket.send(PacketWrapper.wrap(
-					new byte[1],
-					serverSeq + 1,
-					base,
-					Flags.ACK,
-					address,
-					destPort));
-			destPort = correctedDestPort;
-		} catch (InstantiationException | IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+	private void send3rdACK(int serverSeq) throws SocketException, IOException {
+		socket.send(PacketWrapper.wrap(
+				new byte[1],
+				serverSeq + 1,
+				base,
+				Flags.ACK,
+				address,
+				destPort));
+		destPort = correctedDestPort;
 		base = getShifted(base);
 	}
 	
@@ -296,7 +275,7 @@ public class SimpleSocket {
 		}
 	}
 	
-	public void close() throws InterruptedException, IOException {
+	public void close() throws InterruptedException, IOException{
 		// send fin when done writing
 		// stop recv when got fin
 		log("closing...");

@@ -8,8 +8,7 @@ public class Server implements Runnable{
 
 	@Override
 	public void run() {
-		try {
-		SimpleServerSocket ssocket = new SimpleServerSocket(6000);
+		try (SimpleServerSocket ssocket = new SimpleServerSocket(6000)){
 		SimpleSocket socket = ssocket.accept();
 		String s = null;
 		for(int i = 0; i < 10; i++) {

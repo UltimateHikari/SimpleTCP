@@ -118,7 +118,7 @@ public class SimpleSocket {
 		private void handleFlag() {
 			//if we have something to resend
 			//TODO going to break at 256 tho
-			if(flag == Flags.ACK.value) {
+			if(flag == Flags.ACK.ordinal()) {
 				synchronized(lock) {
 					for(int i = base; i < ackindex; i++) {
 						sending[i] = null;
@@ -127,7 +127,7 @@ public class SimpleSocket {
 				base = ackindex > base ? ackindex : base;
 			}
 			
-			if(flag == Flags.FIN.value) {
+			if(flag == Flags.FIN.ordinal()) {
 				//means other side stopped sending useful packets
 				log("got fin");
 //				if(isConnected) {

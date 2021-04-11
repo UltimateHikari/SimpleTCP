@@ -22,7 +22,7 @@ public class PacketWrapper {
 		ByteArrayOutputStream bs = new ByteArrayOutputStream();
 		bs.write(currentACK);
 		bs.write(packetNum);
-		bs.write((byte)flag.value);
+		bs.write((byte)flag.ordinal());
 		bs.writeBytes(data);
 		byte [] wrapped = bs.toByteArray();
 		return new DatagramPacket(wrapped, wrapped.length, address, destPort);

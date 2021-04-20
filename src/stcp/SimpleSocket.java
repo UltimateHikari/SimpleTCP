@@ -100,7 +100,7 @@ public class SimpleSocket {
 			timer.cancel();
 		}
 
-		private void fillHeaders(byte[] data) {
+		private void fillHeaders(byte[] data) { //TODO move to erapper
 			ackindex = data[0];
 			index = data[1];
 			flag = data[2];

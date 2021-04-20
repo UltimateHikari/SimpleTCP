@@ -12,46 +12,44 @@ import java.util.TimerTask;
 public class SimpleServerSocket implements AutoCloseable{
 	private DatagramSocket socket;
 	private static final int timeout  = 1000;
-	private int port;
-	private InetAddress address;
-	private int childPort;
+	private SimpleSocketAddress address = new SimpleSocketAddress();
+	private int nextAcceptedPort;
 	DatagramPacket packet = null;
 
 	
-	public SimpleServerSocket(int port_) throws SocketException, UnknownHostException {
-		port = port_;
-		childPort = port  + 1;
-		address = InetAddress.getByName("localhost");
-		socket = new DatagramSocket(port_);
+	public SimpleServerSocket(int port) throws SocketException, UnknownHostException {
+		address.setSourcePort(port);
+		nextAcceptedPort = port  + 1;
+		socket = new DatagramSocket(port);
 	}
 	
 	public SimpleSocket accept() throws SocketException, IOException{
 		Timer timer = new Timer();
-		int[] dest = recvSYN();
-		sendSYNACK(dest, timer);
-		int recvACK = recvACK(dest, timer);
+		int destSeq = recvSYN();
+		sendSYNACK(destSeq, timer);
+		int recvACK = recvACK(timer);
 		//TODO no handling for exceptions here;
 		//single-threaded also
-		System.out.println("SERVER: connected to " + dest[0]);
+		System.out.println("SERVER: connected to " + address.getDestPort());
 		SimpleSocket res = null;
-		res = new SimpleSocket(childPort, recvACK);
+		res = new SimpleSocket(nextAcceptedPort, recvACK);
 		res.softConnect(InetAddress.getByName("localhost"), 5000);
 
-		childPort++;
+		nextAcceptedPort++;
 		return res;
 	}
-	private int[] recvSYN() throws IOException {
+	private int recvSYN() throws IOException {
 		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
 		socket.receive(recvpacket);
-		int destPort = recvpacket.getPort();
-		int destSeq = recvpacket.getData()[1];
-		return new int[] {destPort, destSeq};
+		address.setAddress(recvpacket.getAddress());
+		address.setDestPort(recvpacket.getPort());
+		return recvpacket.getData()[1]; //TODO move to WRAPPER
 	}
 	
-	private void sendSYNACK(int[] dest, Timer timer) throws SocketException, IOException {
+	private void sendSYNACK(int destSeq, Timer timer) throws SocketException, IOException {
 		packet = Wrapper.wrap(
-				ByteBuffer.allocate(4).putInt(childPort).array(),
-				dest[1] + 1,
+				ByteBuffer.allocate(4).putInt(nextAcceptedPort).array(),
+				destSeq + 1,
 				0,
 				Flags.SYNACK,
 				address);
@@ -74,7 +72,7 @@ public class SimpleServerSocket implements AutoCloseable{
 			timeout);
 	}
 	
-	private int recvACK(int[] dest, Timer timer) {
+	private int recvACK(Timer timer) {
 		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
 		int recvDest, recvACK = 0;
 		do {
@@ -86,7 +84,7 @@ public class SimpleServerSocket implements AutoCloseable{
 			recvDest = recvpacket.getPort();
 			recvACK = recvpacket.getData()[0];
 			System.out.println("SERVER: got 3rd ack");
-		} while(recvDest != dest[0] || recvACK != 1);
+		} while(recvDest != address.getDestPort() || recvACK != 1);
 		timer.cancel();
 		return recvACK;
 	}

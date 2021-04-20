@@ -49,13 +49,12 @@ public class SimpleServerSocket implements AutoCloseable{
 	}
 	
 	private void sendSYNACK(int[] dest, Timer timer) throws SocketException, IOException {
-		packet = PacketWrapper.wrap(
+		packet = Wrapper.wrap(
 				ByteBuffer.allocate(4).putInt(childPort).array(),
 				dest[1] + 1,
 				0,
 				Flags.SYNACK,
-				address,
-				dest[0]);
+				address);
 		socket.send(packet);
 
 		

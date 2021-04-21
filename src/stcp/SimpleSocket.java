@@ -81,7 +81,7 @@ public class SimpleSocket {
 	private boolean isTimerSet = false;
 	private int timeout = 100;
 	private int lastBase = 0;
-	private final int RESENDS_IGNORED_THRESHOLD = 4;
+	private final int RESENDS_IGNORED_THRESHOLD = 8;
 	private int resendsIgnored = 0;
 
 	boolean isRunning = true;
@@ -102,7 +102,7 @@ public class SimpleSocket {
 					socket.receive(packet);
 					fillHeaders(packet.getData());
 					synchronized (receiving) {
-						if (receiving[index] == null && currentACK <= index) {
+						if (flag != Flags.ACK.ordinal() && receiving[index] == null && currentACK <= index) {
 							receiving[index] = packet;
 							// log("taking " + index);
 						} else {
@@ -130,7 +130,7 @@ public class SimpleSocket {
 			ackindex = Wrapper.getAckindex(packet);
 			index = Wrapper.getSeqindex(packet);
 			flag = Wrapper.getFlag(packet);
-			log("got " + Wrapper.toHeadersString(packet)+ " from " + address.getDestPort());
+			log("        got " + Wrapper.toHeadersString(packet)+ " fr " + address.getDestPort());
 		}
 
 		private void handleFlag() {
@@ -189,7 +189,7 @@ public class SimpleSocket {
 		if (random.nextInt(10) > 6) {
 			log("NOT sending " + Wrapper.toHeadersString(packet) + " to " + address.getDestPort());
 		} else {
-			log("sending " + Wrapper.toHeadersString(packet) + " to " + address.getDestPort());
+			log("    sending " + Wrapper.toHeadersString(packet) + " to " + address.getDestPort());
 			socket.send(packet);
 		}
 		// fictional, but since we have no payload for acks
@@ -246,6 +246,7 @@ public class SimpleSocket {
 		DatagramPacket packet = new DatagramPacket(new byte[10], 10);
 		socket.receive(packet);
 		address.setDestPort(Wrapper.getServerAcceptPort(packet));
+		
 		return Wrapper.getSeqindex(packet);
 	}
 
@@ -265,10 +266,11 @@ public class SimpleSocket {
 		base = indexer.getNext(base);
 	}
 
-	public void softConnect(InetAddress address_, int port) {
+	public void softConnect(InetAddress address_, int port) throws SocketException {
 		address.setAddress(address_);
 		address.setDestPort(port);
 		isConnected = true;
+		socket.setSoTimeout(socketTimeout);
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
 	}

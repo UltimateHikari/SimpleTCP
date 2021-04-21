@@ -5,6 +5,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -17,20 +18,43 @@ public class SimpleSocket {
 		public void run() {
 			synchronized (sending) {
 				log("Timer: elapsed");
+				if(resendsIgnored == RESENDS_IGNORED_THRESHOLD) {
+					log("Timer: detected dead receiver");
+					markAllPacketsAsSent();
+				}
 				if (indexer.isBefore(base, end)) {
 					log("Timer: base/end " + base + " " + end);
+					
+					refreshIgnoredResends();
+					
 					try {
-						log("Timer: resending " + base);
+						log("Timer: resending " + base + " : " 
+							+ Flags.values()[Wrapper.getFlag(sending[base])]);
 						socket.send(sending[base]);
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
+					
 					isTimerSet = true;
 					timer.schedule(new Resender(), timeout);
 				} else {
 					log("Timer: stopped");
 				}
 			}
+		}
+
+		private void markAllPacketsAsSent() {
+			end = base;
+		}
+		
+		private void refreshIgnoredResends() {
+			if(base == lastBase) {
+				resendsIgnored++;
+			}else {
+				resendsIgnored = 0;
+				lastBase = base;
+			}
+			
 		}
 	}
 
@@ -50,11 +74,15 @@ public class SimpleSocket {
 
 	private Thread rThread;
 	private DatagramSocket socket;
+	private int socketTimeout = 1000;
 	private SimpleSocketAddress address  = new SimpleSocketAddress();
 
 	private Timer timer = new Timer();
 	private boolean isTimerSet = false;
-	private int timeout = 200;
+	private int timeout = 100;
+	private int lastBase = 0;
+	private final int RESENDS_IGNORED_THRESHOLD = 4;
+	private int resendsIgnored = 0;
 
 	boolean isRunning = true;
 	boolean isConnected = false;
@@ -87,13 +115,15 @@ public class SimpleSocket {
 					}
 					handleFlag();
 
+				} catch (SocketTimeoutException e) { 
+					// no tcp-keepalive packet 'cause we dont have them
+					// in scenario of 10 packets;
+					break;
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
 			}
-			log("Closed");
-			socket.close();
-			timer.cancel();
+			closeResources();
 		}
 
 		private void fillHeaders(byte[] data) {
@@ -157,9 +187,9 @@ public class SimpleSocket {
 		DatagramPacket packet;
 		packet = Wrapper.wrap(data, currentACK, end, flag, address);
 		if (random.nextInt(10) > 6) {
-			log("NOT sending " + flag + "; " + data.length + " bytes to " + address.getDestPort());
+			log("NOT sending " + Wrapper.toHeadersString(packet) + " to " + address.getDestPort());
 		} else {
-			log("sending " + flag + "; " + data.length + " bytes to " + address.getDestPort());
+			log("sending " + Wrapper.toHeadersString(packet) + " to " + address.getDestPort());
 			socket.send(packet);
 		}
 		// fictional, but since we have no payload for acks
@@ -202,8 +232,10 @@ public class SimpleSocket {
 		}
 		// mb want to check for real connection but nah, take your 3-way handshake
 		// (need timeout in recvSYNACK, but in our terms server always exists)
+		socket.setSoTimeout(socketTimeout);
 		rThread = new Thread(new ReadLoop());
 		rThread.start();
+		log("started " + rThread.toString());
 	}
 
 	private void sendSYN() throws IOException {
@@ -247,10 +279,16 @@ public class SimpleSocket {
 		}
 	}
 
+	private void closeResources() {
+		socket.close();
+		timer.cancel();
+		log("Closed from " + Thread.currentThread().toString());
+	}
+	
 	public void close() throws InterruptedException, IOException {
 		// send fin when done writing
 		// stop recv when got fin
-		log("closing...");
+		log("Closing from outer .close()");
 		send(new byte[1], Flags.FIN);
 		isConnected = false;
 		// then getting ack and closing in readloop

@@ -2,7 +2,6 @@ package stcp;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
@@ -23,17 +22,18 @@ public class SimpleServerSocket implements AutoCloseable{
 		socket = new DatagramSocket(port);
 	}
 	
+	/*
+	 * Single-threaded, potential bottleneck
+	 */
 	public SimpleSocket accept() throws SocketException, IOException{
 		Timer timer = new Timer();
+		
 		int destSeq = recvSYN();
 		sendSYNACK(destSeq, timer);
 		int recvACK = recvACK(timer);
-		//TODO no handling for exceptions here;
-		//single-threaded also
-		System.out.println("SERVER: connected to " + address.getDestPort());
-		SimpleSocket res = null;
-		res = new SimpleSocket(nextAcceptedPort, recvACK);
-		res.softConnect(InetAddress.getByName("localhost"), 5000);
+		log("connect to " + address.getDestPort());
+		SimpleSocket res = new SimpleSocket(nextAcceptedPort, recvACK);
+		res.softConnect(address.getAddress(), address.getDestPort());
 
 		nextAcceptedPort++;
 		return res;
@@ -64,7 +64,6 @@ public class SimpleServerSocket implements AutoCloseable{
 						System.out.println("SERVER: timer elapsed");
 						socket.send(packet);
 					} catch (IOException e) {
-						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
 				}
@@ -72,24 +71,24 @@ public class SimpleServerSocket implements AutoCloseable{
 			timeout);
 	}
 	
-	private int recvACK(Timer timer) {
+	private int recvACK(Timer timer) throws IOException {
 		DatagramPacket recvpacket = new DatagramPacket(new byte[1024], 1024);
 		int recvDest, recvACK = 0;
 		do {
-			try {
-				socket.receive(recvpacket);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			socket.receive(recvpacket);
 			recvDest = recvpacket.getPort();
 			recvACK = recvpacket.getData()[0];
-			System.out.println("SERVER: got 3rd ack");
+			log("SYN: got 3rd ack");
 		} while(recvDest != address.getDestPort() || recvACK != 1);
 		timer.cancel();
 		return recvACK;
 	}
 
 	public void close() {
-		//TODO
+		socket.close();
+	}
+	
+	private void log(String s) {
+		System.out.println("Server[" + address.getSourcePort() + "]: " + s);
 	}
 }

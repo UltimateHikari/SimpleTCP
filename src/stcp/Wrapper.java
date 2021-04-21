@@ -16,7 +16,7 @@ class Wrapper {
 
 	public static DatagramPacket wrap(byte[] data, int currentACK, int packetNum, Flags flag,
 			SimpleSocketAddress address) throws SocketException {
-		if (address == null) {
+		if (address == null || address.getDestPort() == null) {
 			throw new SocketException("Socket is not connected");
 		}
 		ByteArrayOutputStream bs = new ByteArrayOutputStream();

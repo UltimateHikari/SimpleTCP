@@ -26,7 +26,7 @@ public class SimpleSocketAddress {
 	}
 	
 	public void setDestPort(Integer port) {
-		sourcePort = port;
+		destPort = port;
 	}
 	
 	public Integer getSourcePort() {

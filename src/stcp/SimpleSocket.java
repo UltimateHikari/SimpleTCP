@@ -53,7 +53,7 @@ public class SimpleSocket {
 
 	private Thread rThread;
 	private DatagramSocket socket;
-	private SimpleSocketAddress address;
+	private SimpleSocketAddress address  = new SimpleSocketAddress();
 
 	private Timer timer = new Timer();
 	private boolean isTimerSet = false;

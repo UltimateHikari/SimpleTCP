@@ -15,12 +15,12 @@ public class SimpleSocket {
 	class Resender extends TimerTask {
 		@Override
 		public void run() {
-			synchronized (lock) {
-				log("Timer elapsed");
+			synchronized (sending) {
+				log("Timer: elapsed");
 				if (indexer.isBefore(base, end)) {
-					log("Base/end " + base + " " + end);
+					log("Timer: base/end " + base + " " + end);
 					try {
-						log("Resending " + base);
+						log("Timer: resending " + base);
 						socket.send(sending[base]);
 					} catch (IOException e) {
 						e.printStackTrace();
@@ -28,7 +28,7 @@ public class SimpleSocket {
 					isTimerSet = true;
 					timer.schedule(new Resender(), timeout);
 				} else {
-					log("Timer stopped");
+					log("Timer: stopped");
 				}
 			}
 		}
@@ -42,7 +42,6 @@ public class SimpleSocket {
 	private int end = 0; // nextseqnum
 	private int currentACK = 0;
 
-	private final Object lock = new Object();
 	private final ReentrantLock connectLock = new ReentrantLock();
 
 	private DatagramPacket[] sending = new DatagramPacket[BUFFER_SIZE];
@@ -74,7 +73,7 @@ public class SimpleSocket {
 					packet = new DatagramPacket(new byte[1024], 1024);
 					socket.receive(packet);
 					fillHeaders(packet.getData());
-					synchronized (lock) {
+					synchronized (receiving) {
 						if (receiving[index] == null && currentACK <= index) {
 							receiving[index] = packet;
 							// log("taking " + index);
@@ -101,12 +100,12 @@ public class SimpleSocket {
 			ackindex = Wrapper.getAckindex(packet);
 			index = Wrapper.getSeqindex(packet);
 			flag = Wrapper.getFlag(packet);
-			log("got " + Wrapper.toHeadersString(packet)+ "from " + address.getDestPort());
+			log("got " + Wrapper.toHeadersString(packet)+ " from " + address.getDestPort());
 		}
 
 		private void handleFlag() {
 			if (flag == Flags.ACK.ordinal()) {
-				synchronized (lock) {
+				synchronized (sending) {
 					for (int i = base; i < ackindex; i++) {
 						sending[i] = null;
 					}
@@ -165,7 +164,7 @@ public class SimpleSocket {
 		}
 		// fictional, but since we have no payload for acks
 		if (flag != Flags.ACK) {
-			synchronized (lock) {
+			synchronized (sending) {
 				sending[end] = packet;
 				end = indexer.getNext(end);
 				if (!isTimerSet) {

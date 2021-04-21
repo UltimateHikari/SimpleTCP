@@ -5,8 +5,6 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -19,13 +17,12 @@ public class SimpleSocket {
 		public void run() {
 			synchronized (lock) {
 				log("Timer elapsed");
-				if (base != end) {
+				if (indexer.isBefore(base, end)) {
 					log("Base/end " + base + " " + end);
 					try {
 						log("Resending " + base);
 						socket.send(sending[base]);
 					} catch (IOException e) {
-						// because in different thread
 						e.printStackTrace();
 					}
 					isTimerSet = true;
@@ -39,6 +36,7 @@ public class SimpleSocket {
 
 	private static final int BUFFER_SIZE = 256;
 	private static final boolean LOG_LEVEL = true;
+	private final CycleIndexer indexer = new CycleIndexer(BUFFER_SIZE);
 
 	private int base = 0;
 	private int end = 0; // nextseqnum
@@ -71,8 +69,7 @@ public class SimpleSocket {
 
 		@Override
 		public void run() {
-			// TODO again, going to break at 256
-			while (isRunning || base < end || isConnected) {
+			while (isRunning || indexer.isBefore(base, end) || isConnected) {
 				try {
 					packet = new DatagramPacket(new byte[1024], 1024);
 					socket.receive(packet);
@@ -100,23 +97,21 @@ public class SimpleSocket {
 			timer.cancel();
 		}
 
-		private void fillHeaders(byte[] data) { //TODO move to erapper
-			ackindex = data[0];
-			index = data[1];
-			flag = data[2];
-			log("got " + ackindex + " " + index + " " + flag + " from " + address.getDestPort());
+		private void fillHeaders(byte[] data) {
+			ackindex = Wrapper.getAckindex(packet);
+			index = Wrapper.getSeqindex(packet);
+			flag = Wrapper.getFlag(packet);
+			log("got " + Wrapper.toHeadersString(packet)+ "from " + address.getDestPort());
 		}
 
 		private void handleFlag() {
-			// if we have something to resend
-			// TODO going to break at 256 tho
 			if (flag == Flags.ACK.ordinal()) {
 				synchronized (lock) {
 					for (int i = base; i < ackindex; i++) {
 						sending[i] = null;
 					}
 				}
-				base = ackindex > base ? ackindex : base;
+				base = Math.max(base, ackindex);
 			}
 
 			if (flag == Flags.FIN.ordinal()) {
@@ -163,26 +158,22 @@ public class SimpleSocket {
 		DatagramPacket packet;
 		packet = Wrapper.wrap(data, currentACK, end, flag, address);
 		if (random.nextInt(10) > 6) {
-			log("NOT sending " + data.length + " bytes to " + address.getDestPort());
+			log("NOT sending " + flag + "; " + data.length + " bytes to " + address.getDestPort());
 		} else {
-			log("sending " + flag + " ; " + data.length + " bytes to " + address.getDestPort());
+			log("sending " + flag + "; " + data.length + " bytes to " + address.getDestPort());
 			socket.send(packet);
 		}
 		// fictional, but since we have no payload for acks
 		if (flag != Flags.ACK) {
 			synchronized (lock) {
 				sending[end] = packet;
-				end = getShifted(end);
+				end = indexer.getNext(end);
 				if (!isTimerSet) {
 					isTimerSet = true;
 					timer.schedule(new Resender(), timeout);
 				}
 			}
 		}
-	}
-
-	private int getShifted(int a) {
-		return (a + 1) % BUFFER_SIZE;
 	}
 
 	private void pushRecieved() {
@@ -193,7 +184,7 @@ public class SimpleSocket {
 				recieved.add(Wrapper.getPayload(receiving[currentACK]));
 			}
 			receiving[currentACK] = null;
-			currentACK = getShifted(currentACK);
+			currentACK = indexer.getNext(currentACK);
 		}
 	}
 
@@ -224,7 +215,7 @@ public class SimpleSocket {
 		DatagramPacket packet = new DatagramPacket(new byte[10], 10);
 		socket.receive(packet);
 		address.setDestPort(Wrapper.getServerAcceptPort(packet));
-		return packet.getData()[1];
+		return Wrapper.getSeqindex(packet);
 	}
 
 	private void send3rdACK(int serverSeq, int serverListeningPort) throws SocketException, IOException {
@@ -240,7 +231,7 @@ public class SimpleSocket {
 				base,
 				Flags.ACK,
 				listenAddress));
-		base = getShifted(base);
+		base = indexer.getNext(base);
 	}
 
 	public void softConnect(InetAddress address_, int port) {

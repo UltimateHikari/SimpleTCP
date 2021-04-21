@@ -43,6 +43,22 @@ class Wrapper {
 				packet.getLength()
 				);
 	}
+	
+	public static byte getAckindex(DatagramPacket packet) {
+		return packet.getData()[0];
+	}
+	public static byte getSeqindex(DatagramPacket packet) {
+		return packet.getData()[1];
+	}
+	public static byte getFlag(DatagramPacket packet) {
+		return packet.getData()[2];
+	}
+	
+	public static String toHeadersString(DatagramPacket packet) {
+		return "ACK:" + packet.getData()[0] + 
+				";SEQ:" + packet.getData()[1] + 
+				";Flag:" + Flags.values()[packet.getData()[2]];
+	}
 
 	public static boolean isEligibleForACK(DatagramPacket packet) {
 		return (packet.getData()[2] != Flags.ACK.ordinal());

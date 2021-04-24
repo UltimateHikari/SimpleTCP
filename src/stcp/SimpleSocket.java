@@ -294,6 +294,7 @@ public class SimpleSocket {
 		send(new byte[1], Flags.FIN);
 		isConnected = false;
 		// then getting ack and closing in readloop
+		rThread.join();
 	}
 
 }
